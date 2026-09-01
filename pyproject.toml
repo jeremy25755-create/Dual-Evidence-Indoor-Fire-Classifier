@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [".venv", "dataset", "out"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"run_tests.py" = ["E402", "I001"]
+"smoke_inference.py" = ["I001"]
+"utils/augmentation.py" = ["E741"]
+"utils/tools.py" = ["I001"]
