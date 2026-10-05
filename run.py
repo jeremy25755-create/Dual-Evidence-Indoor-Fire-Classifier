@@ -16,7 +16,9 @@ def get_args():
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
-    parser.add_argument('--model', type=str, required=True, default='TEFN', choices=['TEFN'],
+    parser.add_argument('--model', type=str, required=True,
+                        default='TEFN_FuzzyTCN_Classifier_32',
+                        choices=['TEFN', 'TEFN_FuzzyTCN_Classifier_32'],
                         help='model name')
 
     # data loader
@@ -83,8 +85,19 @@ def get_args():
 
     # classification task
     parser.add_argument('--num_class', type=int, default=4, help='number of classes')
-    parser.add_argument('--classification_hidden_dim', type=int, default=128,
+    parser.add_argument('--classification_hidden_dim', type=int, default=64,
                         help='hidden size of the classification head')
+    parser.add_argument('--fuzzy_levels', type=int, default=3,
+                        help='number of explicit Gaussian fuzzy levels per sensor')
+    parser.add_argument('--tcn_hidden_dim', type=int, default=8,
+                        help='hidden channels of the lightweight causal TCN time branch')
+    parser.add_argument('--time_bottleneck_dim', type=int, default=0,
+                        help='low-rank time mixer bottleneck for SensorFCM; '
+                             '0 keeps the original dense mixer')
+    parser.add_argument('--time_mixer_type', type=str, default='dense',
+                        choices=['dense', 'separable'],
+                        help='SensorFCM time mixer: dense T*F mixing or '
+                             'parameter-efficient separate time/state mixing')
     parser.add_argument('--classification_stride', type=int, default=10,
                         help='stride between fire-source classification windows')
     parser.add_argument('--event_gap_seconds', type=float, default=60.0,
@@ -101,9 +114,17 @@ def get_args():
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
     parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
+    parser.add_argument('--min_epochs', type=int, default=10,
+                        help='minimum epochs before early stopping is counted')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0001,
                         help='AdamW weight decay for classification')
+    parser.add_argument('--lr_factor', type=float, default=0.5,
+                        help='ReduceLROnPlateau learning-rate reduction factor')
+    parser.add_argument('--lr_patience', type=int, default=1,
+                        help='validation epochs without macro-F1 improvement before reducing LR')
+    parser.add_argument('--min_learning_rate', type=float, default=1e-6,
+                        help='minimum learning rate used by ReduceLROnPlateau')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
@@ -167,6 +188,47 @@ def get_args():
                         help="Activation function for EvidenceMachineKernel")
     parser.add_argument('--use_probabilistic_layer', action=argparse.BooleanOptionalAction, default=False,
                         help="use probabilistic dropout layer")
+    parser.add_argument('--fcm_steps', type=int, default=2,
+                        help='number of FCM cross-sensor propagation steps (TEFN_SensorFCM_Classifier_32)')
+    parser.add_argument('--fcm_l1_weight', type=float, default=0.0,
+                        help='L1 penalty weight on FCM adjacency edges (TEFN_SensorFCM_Classifier_32); '
+                             '0 disables it, try 0.001-0.01 to sharpen the learned graph')
+    parser.add_argument('--fcm_temp_min', type=float, default=1.0,
+                        help='minimum tanh temperature the FCM adjacency anneals to '
+                             '(TEFN_SensorFCM_Classifier_32); default 1.0 disables '
+                             'annealing (best measured macro_F1). Lower values (e.g. 0.3) '
+                             'sharpen the learned graph for interpretability at a measured '
+                             'macro_F1 cost (~0.836 -> ~0.803 at temp_min=0.3)')
+    parser.add_argument('--fcm_temp_decay', type=float, default=0.999,
+                        help='per-training-step multiplicative decay applied to the FCM '
+                             'temperature (TEFN_SensorFCM_Classifier_32); no effect when '
+                             'fcm_temp_min=1.0')
+    parser.add_argument('--fcm_state_activation', type=str, default='sigmoid',
+                        choices=['tanh', 'sigmoid'],
+                        help='FCM concept-activation squashing function (TEFN_SensorFCM_Classifier_32): '
+                             '"sigmoid" is the best measured setting and maps concepts to fuzzy '
+                             'membership in [0,1]; "tanh" is bipolar [-1,1]')
+    parser.add_argument('--label_smoothing', type=float, default=0.0,
+                        help='label smoothing epsilon for CrossEntropyLoss (0=off, try 0.1)')
+    parser.add_argument('--use_focal_loss', action=argparse.BooleanOptionalAction, default=False,
+                        help='use focal loss instead of (weighted) CrossEntropyLoss')
+    parser.add_argument('--focal_gamma', type=float, default=2.0,
+                        help='focal loss focusing parameter gamma (higher = more focus on hard examples)')
+    parser.add_argument('--class_weight_override', type=float, nargs='+', default=None,
+                        help='manual class weights [Background Fire Nuisance]; '
+                             'overrides inverse-frequency weighting when set')
+    parser.add_argument('--class_weight_power', type=float, default=1.0,
+                        help='power applied to inverse-frequency class weights; '
+                             '1.0 is full balancing, 0.5 is square-root balancing')
+    parser.add_argument('--kl_weight', type=float, default=0.01,
+                        help='incorrect-evidence KL regularization weight')
+    parser.add_argument('--edl_loss_weight', type=float, default=0.1,
+                        help='weight of the auxiliary evidential loss; the main '
+                             'classification loss remains weighted cross entropy')
+    parser.add_argument('--annealing_epochs', type=int, default=10,
+                        help='epochs used to anneal evidential KL regularization')
+    parser.add_argument('--branch_loss_weight', type=float, default=0.2,
+                        help='auxiliary evidential loss weight for each branch')
 
     args = parser.parse_args()
 

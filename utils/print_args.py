@@ -54,6 +54,10 @@ def print_args(args):
     print(f'  {"Num Workers:":<20}{args.num_workers:<20}{"Itr:":<20}{args.itr:<20}')
     print(f'  {"Train Epochs:":<20}{args.train_epochs:<20}{"Batch Size:":<20}{args.batch_size:<20}')
     print(f'  {"Patience:":<20}{args.patience:<20}{"Learning Rate:":<20}{args.learning_rate:<20}')
+    print(f'  {"Weight Decay:":<20}{args.weight_decay:<20}{"Class Wt Power:":<20}'
+          f'{getattr(args, "class_weight_power", 1.0):<20}')
+    print(f'  {"LR Factor:":<20}{getattr(args, "lr_factor", 0.5):<20}'
+          f'{"LR Patience:":<20}{getattr(args, "lr_patience", 1):<20}')
     print(f'  {"Des:":<20}{args.des:<20}{"Loss:":<20}{args.loss:<20}')
     print(f'  {"Lradj:":<20}{args.lradj:<20}{"Use Amp:":<20}{args.use_amp:<20}')
     print()
